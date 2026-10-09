@@ -127,6 +127,14 @@ eq "package.json created" '{"dependencies":{"tabby-omarchy":"file:omarchy/tabby-
 bash "$ROOT/install.sh" --uninstall >/dev/null 2>&1
 check "package.json we created is removed" test ! -e "$TP/package.json"
 
+echo "== uninstall --keep-settings"
+bash "$ROOT/install.sh" --no-default --no-hypr --no-menu --no-widget >/dev/null 2>&1
+bash "$HOME/.local/bin/omarchy-tabby" settings set syncFont false
+bash "$HOME/.local/bin/omarchy-tabby" settings set tuiTerminal kitty
+bash "$ROOT/install.sh" --uninstall --keep-settings >/dev/null 2>&1
+eq "user settings kept as they were" '{"syncFont":false,"tuiTerminal":"kitty"}' "$(jq -c . "$XDG_CONFIG_HOME/omarchy-tabby/settings.json")"
+check "update leaves no stray directories" bash -c '! ls -a "$1" | grep -q "\.old\.\|\.new\."' _ "$XDG_CONFIG_HOME/omarchy/plugins"
+
 printf '\ninstall: %d passed, %d failed\n' "$PASS" "$FAIL"
 ((FAIL == 0)) || {
   echo "--- install output"

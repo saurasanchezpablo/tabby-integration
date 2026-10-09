@@ -111,8 +111,22 @@ install_plugin_files() {
     rm -rf -- "${stage:?}"
     die "the plugin failed validation"
   fi
-  rm -rf -- "${DEST:?}"
-  mv -- "$stage" "$DEST" || die "cannot move the plugin into place"
+  swap_dir "$stage" "$DEST" || die "cannot move the plugin into place"
+}
+
+# Replace directory DEST with STAGE leaving DEST missing only between two
+# renames, so a running shell or Tabby never sees a half-copied plugin.
+swap_dir() {
+  local stage="$1" dest="$2" old="$2.old.$$"
+  if [[ -e $dest ]]; then
+    mv -- "$dest" "$old" || return 1
+  fi
+  if ! mv -- "$stage" "$dest"; then
+    [[ -e $old ]] && mv -- "$old" "$dest"
+    return 1
+  fi
+  [[ -e $old ]] && rm -rf -- "${old:?}"
+  return 0
 }
 
 install_wrapper() {
@@ -137,8 +151,7 @@ install_companion() {
   local stage="$TABBY_PLUGINS/omarchy/.tabby-omarchy.new.$$"
   rm -rf -- "${stage:?}"
   cp -R --no-preserve=ownership -- "$SRC/tabby-omarchy" "$stage" || die "cannot copy the Tabby plugin"
-  rm -rf -- "${COMPANION_DIR:?}"
-  mv -- "$stage" "$COMPANION_DIR" || die "cannot move the Tabby plugin into place"
+  swap_dir "$stage" "$COMPANION_DIR" || die "cannot move the Tabby plugin into place"
 
   # node_modules/tabby-omarchy -> ../omarchy/tabby-omarchy, declared in
   # plugins/package.json so Tabby's plugin manager (npm Arborist) keeps it.
@@ -278,6 +291,12 @@ do_install() {
 }
 
 do_uninstall() {
+  # restore_tabby turns the syncs off; --keep-settings must keep the user's
+  # real choices, so save them first and put them back at the end.
+  local saved_settings=""
+  if ((keep_settings)) && [[ -f $OT_SETTINGS ]]; then
+    saved_settings="$(cat -- "$OT_SETTINGS")"
+  fi
   step "Restoring Tabby's own settings"
   restore_tabby
   step "Default terminal"
@@ -306,6 +325,10 @@ do_uninstall() {
   rm -rf -- "${OT_RUNTIME:?}"
   if ((!keep_settings)); then
     rm -rf -- "${OT_CONFIG_DIR:?}"
+  elif [[ -n $saved_settings ]]; then
+    printf '%s\n' "$saved_settings" | write_atomic "$OT_SETTINGS" 644
+  else
+    rm -f -- "$OT_SETTINGS"
   fi
   rm -f -- "$OT_STATE_DIR/install.json"
   ((RESTORED)) && rm -f -- "$OT_STATE_DIR/tabby-backup.json"
