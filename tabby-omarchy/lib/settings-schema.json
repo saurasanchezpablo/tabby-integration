@@ -1,0 +1,39 @@
+{
+  "syncColors": {
+    "type": "boolean",
+    "default": true,
+    "label": "Sync colours with the Omarchy theme",
+    "description": "Tabby uses the current Omarchy theme palette and follows every theme change. Picking another scheme in Tabby pauses the sync until you re-apply it."
+  },
+  "syncFont": {
+    "type": "boolean",
+    "default": true,
+    "label": "Sync font with Omarchy",
+    "description": "Tabby uses the font chosen with `omarchy font set`. The font size is left alone."
+  },
+  "clipboardKeys": {
+    "type": "boolean",
+    "default": true,
+    "label": "Omarchy universal clipboard",
+    "description": "SUPER+C / SUPER+V copy and paste in Tabby, like in the other Omarchy terminals."
+  },
+  "smartCwd": {
+    "type": "boolean",
+    "default": true,
+    "label": "New terminals follow Tabby's directory",
+    "description": "When Tabby is focused, a new terminal (SUPER+RETURN) opens in the directory of the active tab."
+  },
+  "tuiTerminal": {
+    "type": "enum",
+    "options": ["auto", "tabby", "foot", "alacritty", "ghostty", "kitty"],
+    "default": "auto",
+    "label": "Terminal for Omarchy TUIs",
+    "description": "Omarchy apps that need their own window (floating installers, btop, impala…) open here. 'auto' picks the first installed of foot, alacritty, ghostty, kitty; 'tabby' keeps everything in Tabby."
+  },
+  "focusOnOpen": {
+    "type": "boolean",
+    "default": true,
+    "label": "Focus Tabby when a tab opens",
+    "description": "Bring the Tabby window to the front after opening a tab from Omarchy."
+  }
+}
