@@ -21,29 +21,40 @@ push only with permission, one worktree per parallel writer).
   `/usr/lib/tabby/builtin-plugins/*/src`. If a reference doc is wrong, fix it
   in the same commit.
 
-## Architecture (target)
+## Architecture
 
 Two halves, because Omarchy cannot change Tabby's live config and Tabby cannot
 see Omarchy's theme:
 
 ```
-manifest.json            Omarchy shell plugin (kinds: service, bar-widget)
-Service.qml              headless: watches current theme/font, exposes IpcHandler
-Panel.qml                bar widget + popup (launch, profiles, sync status)
-Model.js                 pure logic (palette mapping, URL building); node-tested
-bin/                     omarchy-tabby-* scripts (launcher, cwd, theme export)
-hooks/                   theme-set.d / font-set.d hook sources (installed by copy)
-hypr/                    Lua snippets (window tag, bindings) installed as managed blocks
-menu/                    omarchy-menu.jsonc extension entries
-tabby-plugin/            Tabby-side plugin `tabby-omarchy` (Angular, CommonJS):
-                         color-scheme provider + live apply via ConfigService
-dev/install.sh           copy into ~/.config/omarchy/plugins/<id> + restart shell
-tests/run.sh             all automated checks
+manifest.json            Omarchy shell plugin (kind: bar-widget)
+Panel.qml                bar widget + panel; all state from `omarchy-tabby status --json`
+Model.js                 pure widget logic, node-tested (tests/model.test.js)
+bin/omarchy-tabby        CLI: sources lib/common.sh, then every lib/*.sh module
+lib/common.sh            paths (must match tabby-omarchy/lib/paths.js), helpers
+lib/settings.sh          settings.json, validated against the shared schema
+lib/launch.sh            open/xdg/focus/scratchpad/cwd, request files, TUI fallback
+lib/default.sh           Tabby as xdg-terminal-exec default (desktop entry + list)
+lib/integrate.sh         Hyprland file + hyprland.lua block, Omarchy menu block
+lib/status.sh            status/profiles/apply/doctor
+tabby-omarchy/           Tabby plugin (CommonJS, Angular JIT, no build)
+  index.js               scheme provider, sync service, CLI handler, state export
+  lib/*.js               pure, node-tested: palette, request, settings, paths, misc
+  lib/settings-schema.json  single source of truth for settings (CLI, plugin, widget)
+install.sh               install / update / --uninstall
+tests/run.sh             every check; --e2e drives a real isolated Tabby
 ```
 
-Data flow for theming: `omarchy theme set` → Omarchy template / theme-set hook
-writes `~/.local/state/omarchy/current/theme/tabby.json` (colours only) →
-`tabby-omarchy` watches it and applies via `ConfigService.save()`.
+Data flows:
+- Theme: `omarchy theme set` replaces `~/.local/state/omarchy/current/theme`
+  → tabby-omarchy (fs.watch on the parent + 10 s poll) parses `colors.toml`
+  with the omarchy-theme-color port → `ConfigService.save()`.
+- Launch: CLI writes `$XDG_RUNTIME_DIR/omarchy-tabby/requests/<id>.json`
+  → `tabby tabby://open?directory=…&omarchyRequest=<id>` → CLI handler
+  (priority 100) consumes it (lib/request.js). Without the plugin, plain
+  `tabby://open|run|profile` is used instead.
+- Control: settings.json and runtime `control.json` (`apply`) are watched by
+  the plugin; per-window state goes to runtime `windows/<renderer pid>.json`.
 
 ## Hard constraints (each cost real time to find)
 
@@ -63,7 +74,9 @@ writes `~/.local/state/omarchy/current/theme/tabby.json` (colours only) →
   `omarchy restart shell`.
 - QML: guard every async callback/timer with an `alive` flag (hot reload +
   late write = whole shell aborts); `textFormat: Text.PlainText` on every
-  `Text`; Nerd Font glyphs as `\uXXXX`; never name properties `data`/`enabled`;
+  `Text`; never write Nerd Font glyphs (or `\u` escapes, editing tools
+  turn them into raw glyphs) in sources: use `String.fromCodePoint`, jq
+  `[cp] | implode` or UTF-8 bytes `$'\xef\x92\x89'`; never name properties `data`/`enabled`;
   read settings with `setting(key, fallback)` (manifest defaults are not
   applied); no secrets in IPC args.
 - Edits to user config outside the repo (`~/.config/hypr/*`,
@@ -81,6 +94,7 @@ writes `~/.local/state/omarchy/current/theme/tabby.json` (colours only) →
 
 ```sh
 bash tests/run.sh                         # all checks (add to it as features land)
+bash tests/run.sh --e2e                   # + isolated real Tabby (opens a window ~30 s)
 node --test tests/                        # Model.js / tabby-plugin unit tests
 omarchy plugin validate .                 # manifest + entry points + no symlinks
 /usr/lib/qt6/bin/qmllint -I /usr/lib/qt6/qml -I <dir with qs -> /usr/share/omarchy/shell> *.qml
@@ -114,17 +128,8 @@ are visible to the user — announce them and prefer isolated runs
 6. Never push without explicit permission. Parallel writers each get their own
    worktree (`~/Work/ai-os/scripts/worktree create`).
 
-## Roadmap (each item = at least one commit)
+## Status
 
-1. Scaffold: manifest, minimal service + bar widget, `dev/install.sh`, tests, README.
-2. Launcher `omarchy-tabby-launch`: `tabby://` URLs, cwd, run command, profile.
-3. Correct cwd for SUPER+RETURN from a Tabby window (Tabby's children are
-   Electron helpers; `omarchy-cmd-terminal-cwd` returns `$HOME`).
-4. xdg-terminal-exec support: user `tabby.desktop` override with
-   `X-TerminalArgExec` mapped to the launcher; "Set as default terminal".
-5. Theme sync: palette export (template or hook) + `tabby-omarchy` plugin applying it live.
-6. Font sync via `font-set` hook → `tabby-omarchy`.
-7. Hyprland: tag `tabby` as `+terminal` (universal copy/paste), optional
-   dropdown/quake via special workspace, opacity left to Hyprland.
-8. Omarchy menu entries; bar widget popup (profiles, recent, new window).
-9. Installer/uninstaller with managed blocks and backups; Release 0.1.0.
+0.1.0 implements everything above. Ideas not done yet: a Tabby toolbar
+button/menu for Omarchy actions, per-profile colour schemes, screensaver
+support (`omarchy-launch-screensaver` only knows four terminals).
