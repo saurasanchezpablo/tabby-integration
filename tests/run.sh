@@ -34,7 +34,7 @@ if command -v shellcheck >/dev/null 2>&1; then
 fi
 
 section "manifest"
-run "manifest shape" jq -e '.schemaVersion == 1 and .id == "io.github.saurasanchezpablo.tabby" and .entryPoints.barWidget == "Panel.qml"' manifest.json >/dev/null
+run "manifest shape" bash -c 'jq -e ".schemaVersion == 1 and .id == \"io.github.saurasanchezpablo.tabby\" and .entryPoints.barWidget == \"Panel.qml\"" manifest.json >/dev/null'
 run "versions agree" bash -c '[[ $(jq -r .version manifest.json) == $(jq -r .version tabby-omarchy/package.json) ]]'
 if command -v omarchy-plugin-validate >/dev/null 2>&1; then
   run "omarchy plugin validate" omarchy-plugin-validate .
