@@ -78,6 +78,21 @@ write_atomic() {
   return 1
 }
 
+# Replace FILE's content with stdin, atomically, keeping its mode. A symlink
+# (dotfile managers) is followed: the target is rewritten and the link kept,
+# instead of being replaced by a copy with the link's 0777 mode.
+replace_file() {
+  local file="$1" default_mode="${2:-644}" target mode
+  target="$(readlink -f -- "$file" 2>/dev/null)"
+  [[ -n $target ]] || target="$file"
+  if [[ -e $target ]]; then
+    mode="$(stat -L -c %a -- "$target")" || return 1
+  else
+    mode="$default_mode"
+  fi
+  write_atomic "$target" "$mode"
+}
+
 tabby_installed() {
   [[ -n ${OMARCHY_TABBY_TABBY_CMD:-} ]] || command -v tabby >/dev/null 2>&1
 }

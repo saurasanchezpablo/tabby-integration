@@ -71,18 +71,18 @@ default_on() {
     if [[ -f $OT_XDG_LIST ]]; then
       grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' -e "^$OT_DESKTOP_ID\$" -- "$OT_XDG_LIST" || true
     fi
-  } | write_atomic "$OT_XDG_LIST" 644 || die "cannot write $OT_XDG_LIST"
+  } | replace_file "$OT_XDG_LIST" || die "cannot write $OT_XDG_LIST"
   [[ ${1:-} == --quiet ]] || notify "Tabby is now the default terminal" $'\xef\x92\x89'
 }
 
 default_off() {
   local orig="$OT_STATE_DIR/xdg-terminals.list.orig"
   if [[ -f $orig ]]; then
-    write_atomic "$OT_XDG_LIST" 644 <"$orig" && rm -f -- "$orig"
+    replace_file "$OT_XDG_LIST" <"$orig" && rm -f -- "$orig"
   elif [[ -e $orig.absent ]]; then
     rm -f -- "$OT_XDG_LIST" "$orig.absent"
   elif [[ -f $OT_XDG_LIST ]]; then
-    grep -v -e "^$OT_DESKTOP_ID\$" -e "added by omarchy-tabby" -- "$OT_XDG_LIST" | write_atomic "$OT_XDG_LIST" 644
+    grep -v -e "^$OT_DESKTOP_ID\$" -e "added by omarchy-tabby" -- "$OT_XDG_LIST" | replace_file "$OT_XDG_LIST"
   fi
   rm -f -- "$OT_DESKTOP_FILE"
   [[ ${1:-} == --quiet ]] || notify "Tabby is no longer the default terminal" $'\xef\x92\x89'

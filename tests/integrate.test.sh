@@ -155,5 +155,63 @@ cp "$MENU" "$SANDBOX/compact"
 ot integrate install --no-keys 2>/dev/null
 check "compact file left untouched" cmp -s "$MENU" "$SANDBOX/compact"
 
+echo "== symlinked config files (dotfile managers)"
+rm -f "$MENU"
+mkdir -p "$SANDBOX/dotfiles"
+cp "$SANDBOX/hypr.orig" "$SANDBOX/dotfiles/hyprland.lua"
+cp "$SANDBOX/menu.orig" "$SANDBOX/dotfiles/menu.jsonc"
+chmod 640 "$SANDBOX/dotfiles/hyprland.lua"
+ln -sfn "$SANDBOX/dotfiles/hyprland.lua" "$HYPR"
+ln -sfn "$SANDBOX/dotfiles/menu.jsonc" "$MENU"
+check "install through symlinks" ot integrate install --no-keys
+check "hyprland.lua is still a symlink" test -L "$HYPR"
+check "menu is still a symlink" test -L "$MENU"
+check "target got the block" grep -q ">>> io.github" "$SANDBOX/dotfiles/hyprland.lua"
+eq "target mode kept" 640 "$(stat -c %a "$SANDBOX/dotfiles/hyprland.lua")"
+check "remove through symlinks" ot integrate remove
+check "target restored" cmp -s "$SANDBOX/dotfiles/hyprland.lua" "$SANDBOX/hypr.orig"
+check "links kept after remove" bash -c '[[ -L $1 && -L $2 ]]' _ "$HYPR" "$MENU"
+rm -f "$HYPR" "$MENU"
+cp "$SANDBOX/hypr.orig" "$HYPR"
+cp "$SANDBOX/menu.orig" "$MENU"
+
+echo "== damaged blocks"
+ot integrate install --no-keys
+sed -i '/<<< io.github.saurasanchezpablo.tabby <<</d' "$HYPR"
+printf 'o.bind("SUPER + K", "mine", "true")\n' >>"$HYPR"
+ot integrate remove 2>/dev/null
+check "missing end marker: user lines kept" grep -q '"mine"' "$HYPR"
+check "missing end marker: refuses to reinstall" bash -c '! bash "$1" integrate install --no-keys 2>/dev/null' _ "$CLI"
+cp "$SANDBOX/hypr.orig" "$HYPR"
+cp "$SANDBOX/menu.orig" "$MENU"
+
+echo "== menu anchoring"
+printf '// comment\n\n{ "personal":\n  {\n    "label": "P"\n  }\n}\n' >"$MENU"
+cp "$MENU" "$SANDBOX/nested"
+ot integrate install --no-keys 2>/dev/null
+check "nested brace: file untouched" cmp -s "$MENU" "$SANDBOX/nested"
+printf '// comment\n\n{\n  "a": {"label":"A"}\n}\n' >"$MENU"
+ot integrate install --no-keys
+check "comments before the brace are fine" grep -q ">>> io.github" "$MENU"
+cp "$SANDBOX/menu.orig" "$MENU"
+
+echo "== hyprland.lua ending with return"
+ot integrate remove >/dev/null 2>&1
+printf -- '-- config\nreturn {}\n' >"$HYPR"
+cp "$HYPR" "$SANDBOX/ret"
+if command -v luac >/dev/null 2>&1; then
+  check "refuses to break the config" bash -c '! bash "$1" integrate install --no-keys 2>/dev/null' _ "$CLI"
+  check "file untouched" cmp -s "$HYPR" "$SANDBOX/ret"
+fi
+cp "$SANDBOX/hypr.orig" "$HYPR"
+
+echo "== quoting and odd binds"
+echo '[{"modmask":64,"key":""},{"modmask":64,"key":null},{"modmask":72,"key":"t"}]' >"$SANDBOX/binds.json"
+OMARCHY_TABBY_BIN="$HOME/my bin/omarchy-tabby" bash "$CLI" integrate install 2>/dev/null
+check "keycode/null binds don't hide conflicts" bash -c '! grep -q "Tabby\"," "$1"' _ "$XDG_CONFIG_HOME/hypr/omarchy-tabby.lua"
+check "path with a space is shell-quoted" grep -qF 'my\\ bin/omarchy-tabby scratchpad' "$XDG_CONFIG_HOME/hypr/omarchy-tabby.lua"
+echo '[]' >"$SANDBOX/binds.json"
+ot integrate remove
+
 printf '\nintegrate: %d passed, %d failed\n' "$PASS" "$FAIL"
 ((FAIL == 0))
