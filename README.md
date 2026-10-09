@@ -21,11 +21,9 @@ From the Omarchy plugin marketplace (or `omarchy plugin add
 https://github.com/saurasanchezpablo/tabby-integration`), enable the **Tabby**
 bar widget, open it and press **Set up the Tabby integration**.
 
-Or from a checkout:
+Or, from a copy of this repository:
 
 ```bash
-git clone https://github.com/saurasanchezpablo/tabby-integration.git
-cd tabby-integration
 bash install.sh
 ```
 

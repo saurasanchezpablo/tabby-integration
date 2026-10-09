@@ -58,7 +58,7 @@ while (($#)); do
 done
 
 ((EUID != 0)) || die "run as your user, not root"
-command -v jq >/dev/null 2>&1 || die "jq is required (pacman -S jq)"
+command -v jq >/dev/null 2>&1 || die "jq is required (install the jq package)"
 
 interactive() { ((!assume_yes)) && [[ -t 0 && -t 1 ]]; }
 
@@ -279,7 +279,7 @@ enable_widget() {
 do_install() {
   local updating=0
   [[ -d $OT_HOME || -d $DEST ]] && updating=1
-  tabby_installed || note "warning: Tabby is not installed yet (pacman -S tabby); installing the integration anyway"
+  tabby_installed || note "warning: Tabby is not installed yet (install the tabby package); installing the integration anyway"
 
   if interactive; then
     echo "This will:"
