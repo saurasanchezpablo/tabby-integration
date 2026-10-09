@@ -193,6 +193,13 @@ class OmarchyIntegration {
 
     async sync (forceOverride) {
         if (!this.alive || !this.config.store) return
+        // Uninstalled while Tabby runs: stop instead of falling back to the
+        // default settings (which would re-apply the theme just restored).
+        if (!fs.existsSync(path.join(__dirname, 'package.json'))) {
+            console.info(LOG, 'plugin files removed, stopping')
+            this.stop()
+            return
+        }
         this.lastSig = this.signature()
         this.settings = settingsLib.load(fs, this.p.settingsFile)
 
