@@ -20,7 +20,7 @@ Makes [Tabby](https://tabby.sh) a first-class Omarchy terminal instead of
 ```bash
 git clone https://github.com/saurasanchezpablo/omarchy-tabby.git
 cd omarchy-tabby
-./install.sh            # or: bash install.sh
+bash install.sh         # works even where exec bits are lost (rclone, some mounts)
 ```
 
 Then **restart Tabby** once so it loads its half of the integration.
@@ -31,7 +31,7 @@ Options: `--no-default` (keep your current default terminal), `--no-hypr`,
 Tabby's `config.yaml` and never kills Tabby. Keys that are already bound are
 left alone.
 
-Uninstall with `./install.sh --uninstall`: Tabby gets its own colour scheme,
+Uninstall with `bash install.sh --uninstall`: Tabby gets its own colour scheme,
 font and copy keys back (live, if it's running), and every file that was
 edited is restored. Backups stay in `~/.local/state/omarchy-tabby/backups`.
 
