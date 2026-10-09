@@ -101,6 +101,17 @@ See [docs/OMARCHY-REFERENCE.md](docs/OMARCHY-REFERENCE.md) and
 [docs/TABBY-REFERENCE.md](docs/TABBY-REFERENCE.md) for the details behind
 each decision.
 
+## Known limitations
+
+- Tabby is one process with many windows and opens requests in its newest
+  window. With several windows, a new tab can appear in a different window
+  than the focused one (it still starts in the focused tab's directory).
+- After the first install Tabby has to be restarted once; until then
+  launches fall back to Tabby's own `tabby://` commands (`run` asks for
+  confirmation) and the panel says so.
+- If Tabby's config is encrypted, the sync waits until the vault is unlocked.
+- Omarchy's screensaver only supports alacritty, foot, ghostty and kitty.
+
 ## Development
 
 ```bash
