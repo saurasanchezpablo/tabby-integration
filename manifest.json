@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.saurasanchezpablo.tabby",
+  "name": "Tabby",
+  "version": "0.1.0",
+  "author": "Pablo Saura",
+  "license": "MIT",
+  "repository": "https://github.com/saurasanchezpablo/omarchy-tabby",
+  "description": "Tabby as a first-class Omarchy terminal: live theme and font sync, default-terminal support with smart working directory, universal clipboard, dropdown, profiles in the bar, and secure launching.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Tabby",
+    "description": "Tabby status, profiles and integration settings. Left click for the panel, middle click for a new tab, right click to toggle the dropdown.",
+    "category": "System",
+    "aliases": ["tabby", "terminal", "ssh"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "showTabs": true,
+      "hideWhenClosed": false,
+      "pollInterval": 4
+    },
+    "schema": [
+      {
+        "key": "showTabs",
+        "type": "boolean",
+        "label": "Show tab count",
+        "description": "Show how many Tabby tabs are open next to the icon.",
+        "defaultValue": true
+      },
+      {
+        "key": "hideWhenClosed",
+        "type": "boolean",
+        "label": "Hide when Tabby is closed",
+        "defaultValue": false
+      },
+      {
+        "key": "pollInterval",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 2,
+        "max": 60,
+        "step": 1,
+        "defaultValue": 4
+      }
+    ]
+  }
+}

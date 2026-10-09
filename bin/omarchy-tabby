@@ -1,0 +1,77 @@
+#!/bin/bash
+# omarchy-tabby: Tabby integration for Omarchy.
+# omarchy:summary=Open, focus and configure the Tabby terminal integration
+
+set -uo pipefail
+unset ELECTRON_RUN_AS_NODE
+
+OT_ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)"
+export OT_ROOT
+
+# common.sh first (paths and helpers), then every feature module.
+# shellcheck source=/dev/null
+source "$OT_ROOT/lib/common.sh" || {
+  echo "omarchy-tabby: missing $OT_ROOT/lib/common.sh" >&2
+  exit 1
+}
+for module in "$OT_ROOT"/lib/*.sh; do
+  [[ $module == */common.sh ]] && continue
+  # shellcheck source=/dev/null
+  source "$module" || die "cannot load $module"
+done
+
+# Call a function only if its module is installed.
+fn() {
+  declare -F "$1" >/dev/null && "$@"
+}
+
+command -v jq >/dev/null 2>&1 || die "jq is required"
+
+usage() {
+  cat <<EOF
+omarchy-tabby $OT_VERSION: Tabby, integrated with Omarchy
+
+Usage: omarchy-tabby <command> [args]
+
+Terminal
+  open [--dir D] [--title T] [--hold] [--profile P] [--window] [-- cmd...]
+                        open a tab (or run a command) in Tabby
+  focus                 focus Tabby, starting it if needed
+  scratchpad            toggle Tabby as a dropdown (special workspace)
+  cwd                   print the directory a new terminal would use
+  xdg ...               entry point used by xdg-terminal-exec
+
+Integration
+  default [on|off|toggle|status [-q]]
+                        Tabby as Omarchy's default terminal
+  settings [list [--json] | get K | set K V | toggle K | reset]
+  apply                 re-apply Omarchy colours/font over a manual choice
+  integrate [install|remove|status]
+                        Hyprland rules/bindings and Omarchy menu entries
+  status [--json]       what is installed, running and synced
+  profiles [--json]     Tabby profiles (from the running Tabby)
+  doctor                check the installation
+
+  version | help
+EOF
+}
+
+main() {
+  local cmd="${1:-help}"
+  shift || true
+  case "$cmd" in
+  version | --version | -V) echo "$OT_VERSION" ;;
+  help | --help | -h) usage ;;
+  dropdown) cmd_scratchpad "$@" ;;
+  *)
+    if [[ $cmd =~ ^[a-z]+$ ]] && declare -F "cmd_$cmd" >/dev/null; then
+      "cmd_$cmd" "$@"
+    else
+      usage >&2
+      exit 2
+    fi
+    ;;
+  esac
+}
+
+main "$@"
