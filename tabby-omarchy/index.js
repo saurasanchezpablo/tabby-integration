@@ -28,6 +28,7 @@ const PLUGIN_VERSION = require('./package.json').version
 
 const LOG = '[tabby-omarchy]'
 const POLL_MS = 10000
+const CWD_POLL_MS = 1500
 
 function readText (file) {
     try { return fs.readFileSync(file, 'utf8') } catch { return null }
@@ -60,7 +61,12 @@ function ensurePrivateDir (dir) {
 function writeFileAtomic (file, text) {
     const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
     fs.writeFileSync(tmp, text, { mode: 0o600, flag: 'wx' })
-    fs.renameSync(tmp, file)
+    try {
+        fs.renameSync(tmp, file)
+    } catch (err) {
+        try { fs.unlinkSync(tmp) } catch { /* nothing to clean */ }
+        throw err
+    }
 }
 
 function currentScheme () {
@@ -86,8 +92,9 @@ class OmarchyIntegration {
         this.injector = inject(Injector)
         this.p = paths()
         this.alive = true
-        this.watchers = []
+        this.watchers = new Map()
         this.timers = []
+        this.lastCwd = null
         this.settings = settingsLib.defaults()
         this.status = { colors: 'off', font: 'off', clipboard: false, theme: null, fontFamily: null }
         this.lastSig = ''
@@ -108,18 +115,19 @@ class OmarchyIntegration {
         this.lastSig = this.signature()
         this.queueSync(false)
 
-        this.watch(this.p.omarchyCurrentDir)
-        this.watch(path.dirname(this.p.settingsFile))
-        this.watch(this.p.fontconfigDir)
-        this.watch(this.p.runtimeBase, name => name === 'control.json')
+        this.armWatchers()
         this.timers.push(setInterval(() => {
+            this.armWatchers()
             if (this.signature() !== this.lastSig) this.syncSoon()
         }, POLL_MS))
+        // The focused window publishes its active tab's directory, so a new
+        // terminal opened from it starts there even with several windows.
+        this.timers.push(setInterval(() => this.refreshCwd(), CWD_POLL_MS))
 
         this.config.changed$.subscribe(() => this.writeStateSoon())
         this.app.tabsChanged$.subscribe(() => this.writeStateSoon())
-        this.app.activeTabChange$.subscribe(() => this.writeStateSoon())
-        window.addEventListener('focus', () => this.writeStateSoon())
+        this.app.activeTabChange$.subscribe(() => this.refreshCwd(true))
+        window.addEventListener('focus', () => this.refreshCwd(true))
         window.addEventListener('blur', () => this.writeStateSoon())
         window.addEventListener('beforeunload', () => this.stop())
         this.writeStateSoon()
@@ -127,7 +135,8 @@ class OmarchyIntegration {
 
     stop () {
         this.alive = false
-        for (const w of this.watchers) { try { w.close() } catch { /* closed */ } }
+        for (const w of this.watchers.values()) { try { w.close() } catch { /* closed */ } }
+        this.watchers.clear()
         for (const t of this.timers) clearInterval(t)
         this.writeStateSoon.cancel()
         this.syncSoon.cancel()
@@ -138,15 +147,41 @@ class OmarchyIntegration {
     // replaces the theme directory with rm+mv, so we watch parents and also
     // poll a cheap signature as a safety net.
     watch (dir, filter) {
+        if (this.watchers.has(dir)) return
         try {
             const w = fs.watch(dir, { persistent: false }, (_event, name) => {
                 if (!filter || filter(String(name || ''))) this.syncSoon()
             })
-            w.on('error', () => { /* poll covers it */ })
-            this.watchers.push(w)
+            w.on('error', () => {
+                // Directory removed: drop it so armWatchers retries.
+                try { w.close() } catch { /* closed */ }
+                this.watchers.delete(dir)
+            })
+            this.watchers.set(dir, w)
         } catch {
-            // Directory does not exist yet; the poll notices when it appears.
+            // Directory does not exist yet; armWatchers retries on every poll.
         }
+    }
+
+    armWatchers () {
+        if (!this.alive) return
+        this.watch(this.p.omarchyCurrentDir)
+        this.watch(path.dirname(this.p.settingsFile))
+        this.watch(this.p.fontconfigDir)
+        this.watch(this.p.runtimeBase, name => name === 'control.json')
+    }
+
+    async refreshCwd (always) {
+        if (!this.alive || (!always && !document.hasFocus())) return
+        const cwd = await this.activeCwd()
+        if (always || cwd !== this.lastCwd) {
+            this.lastCwd = cwd
+            this.writeStateSoon()
+        }
+    }
+
+    pluginPresent () {
+        return fs.existsSync(path.join(__dirname, 'package.json'))
     }
 
     signature () {
@@ -195,10 +230,14 @@ class OmarchyIntegration {
         if (!this.alive || !this.config.store) return
         // Uninstalled while Tabby runs: stop instead of falling back to the
         // default settings (which would re-apply the theme just restored).
-        if (!fs.existsSync(path.join(__dirname, 'package.json'))) {
-            console.info(LOG, 'plugin files removed, stopping')
-            this.stop()
-            return
+        // An update swaps the directory, so only a lasting absence counts.
+        if (!this.pluginPresent()) {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            if (!this.pluginPresent()) {
+                console.info(LOG, 'plugin files removed, stopping')
+                this.stop()
+                return
+            }
         }
         this.lastSig = this.signature()
         this.settings = settingsLib.load(fs, this.p.settingsFile)
@@ -212,6 +251,10 @@ class OmarchyIntegration {
             this.lastControl = control.apply
         }
 
+        // Await everything before reading the store: another window's save
+        // makes this one reload its config, replacing config.store.
+        const family = this.settings.syncFont ? await this.omarchyFont() : null
+        if (!this.alive || !this.config.store) return
         const store = this.config.store
         const backup = this.readBackup()
         let changed = false
@@ -258,13 +301,16 @@ class OmarchyIntegration {
 
         // Font ---------------------------------------------------------------
         if (this.settings.syncFont) {
-            const family = await this.omarchyFont()
             const font = store.terminal.font
             const fontOurs = backup.font && font === backup.font.applied
             if (!family) {
                 this.status.font = 'error'
             } else if (fontOurs || !backup.font || force) {
                 if (!backup.font) {
+                    backup.font = { original: font, applied: family }
+                    backupChanged = true
+                } else if (force && !fontOurs) {
+                    // Applying over a font picked by hand: that one is what to restore.
                     backup.font = { original: font, applied: family }
                     backupChanged = true
                 } else if (backup.font.applied !== family) {
@@ -365,6 +411,7 @@ class OmarchyIntegration {
                 plugin: PLUGIN_VERSION,
                 updated: Date.now(),
                 focused: document.hasFocus(),
+                cwd: this.lastCwd || null,
                 tabs: this.app.tabs.length,
                 status: this.status,
                 profiles,
