@@ -32,7 +32,8 @@ export OMARCHY_TABBY_BIN="$HOME/.local/bin/omarchy-tabby"
 export OMARCHY_TABBY_NO_RELOAD=1
 unset OMARCHY_TABBY_TABBY_CMD OMARCHY_TABBY_ASSUME_COMPANION TABBY_CONFIG_DIRECTORY OMARCHY_TABBY_CONFIG_DIR OMARCHY_TABBY_STATE_DIR
 mkdir -p "$HOME/.local/bin" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME/applications" "$SANDBOX/usr/share/applications" "$SANDBOX/fakebin" "$SANDBOX/run"
-ln -s "$CLI" "$OMARCHY_TABBY_BIN"
+printf '#!/bin/bash\nexec bash %q "$@"\n' "$CLI" >"$OMARCHY_TABBY_BIN"
+chmod +x "$OMARCHY_TABBY_BIN"
 
 # Fake binaries -----------------------------------------------------------------
 FAKE="$SANDBOX/fakebin"
@@ -89,6 +90,8 @@ Exec=foot --server
 EOF
 
 ot() { bash "$CLI" "$@"; }
+# Background focus jobs would write to the log after the fact; keep them off.
+reset_settings() { ot settings reset && ot settings set focusOnOpen false; }
 last_request() {
   local f
   f="$(ls -t "$OMARCHY_TABBY_RUNTIME_DIR/requests"/*.json 2>/dev/null | head -1)"
@@ -117,6 +120,9 @@ focused_other() {
 }
 
 echo "== settings"
+reset_settings
+eq "default syncColors" true "$(ot settings get syncColors)"
+reset_settings
 eq "default syncColors" true "$(ot settings get syncColors)"
 check "set false" ot settings set syncColors false
 eq "stored" false "$(ot settings get syncColors)"
@@ -133,7 +139,7 @@ eq "valid stored value kept" false "$(ot settings get smartCwd)"
 echo 'not json' >"$XDG_CONFIG_HOME/omarchy-tabby/settings.json"
 eq "corrupt file falls back" true "$(ot settings get smartCwd)"
 check "list --json" bash -c 'bash "$1" settings list --json | jq -e "length == 6 and all(has(\"label\"))" >/dev/null' _ "$CLI"
-ot settings reset
+reset_settings
 
 echo "== open (companion installed)"
 companion
@@ -184,7 +190,7 @@ ot settings set smartCwd false
 reset_log
 ot xdg --dir="$HOME"
 eq "smartCwd off" "$HOME" "$(jq -r .cwd <<<"$(last_request)")"
-ot settings reset
+reset_settings
 focused_other
 eq "not focused" "$HOME" "$(ot cwd)"
 
@@ -202,7 +208,7 @@ ot settings set tuiTerminal tabby
 reset_log
 ot xdg --app-id=org.omarchy.btop -- btop
 check "tuiTerminal=tabby keeps it in Tabby" grep -q "^tabby tabby://open" "$LOG"
-ot settings reset
+reset_settings
 
 echo "== fallback without companion"
 no_companion
@@ -242,6 +248,38 @@ echo '[{"address":"0xabc; os.execute(1)","class":"tabby","focusHistoryID":0,"wor
 reset_log
 check "rejects a weird address" bash -c '! bash "$1" scratchpad 2>/dev/null' _ "$CLI"
 check "nothing dispatched for weird address" bash -c '! grep -q dispatch "$1"' _ "$LOG"
+
+echo "== default terminal (real xdg-terminal-exec)"
+if command -v xdg-terminal-exec >/dev/null 2>&1; then
+  REAL_XTE="$(PATH="${PATH#"$FAKE:"}" command -v xdg-terminal-exec)"
+  printf 'foot.desktop\n' >"$XDG_CONFIG_HOME/xdg-terminals.list"
+  check "not default yet" bash -c '! bash "$1" default status -q' _ "$CLI"
+  check "default on" ot default on --quiet
+  check "desktop entry written" test -f "$XDG_DATA_HOME/applications/tabby-omarchy.desktop"
+  eq "xdg-terminal-exec picks Tabby" "tabby-omarchy.desktop" "$("$REAL_XTE" --print-id 2>/dev/null | cut -d: -f1)"
+  check "status -q" ot default status -q
+  check "previous choice kept as fallback" grep -qx foot.desktop "$XDG_CONFIG_HOME/xdg-terminals.list"
+  cmdline="$("$REAL_XTE" --print-cmd=' ' --app-id=x --title=y --dir=/tmp --hold -- htop 2>/dev/null)"
+  eq "xdg-terminal-exec builds our command" "$OMARCHY_TABBY_BIN xdg --app-id=x --title=y --dir=/tmp --hold -- htop" "$cmdline"
+  check "default on is idempotent" ot default on --quiet
+  eq "single entry" 1 "$(grep -cx tabby-omarchy.desktop "$XDG_CONFIG_HOME/xdg-terminals.list")"
+  check "default off" ot default off --quiet
+  eq "list restored" "foot.desktop" "$(cat "$XDG_CONFIG_HOME/xdg-terminals.list")"
+  check "desktop entry removed" test ! -e "$XDG_DATA_HOME/applications/tabby-omarchy.desktop"
+  rm -f "$XDG_CONFIG_HOME/xdg-terminals.list"
+  ot default on --quiet
+  ot default off --quiet
+  check "absent list stays absent" test ! -e "$XDG_CONFIG_HOME/xdg-terminals.list"
+  ot default toggle >/dev/null
+  check "toggle on" ot default status -q
+  ot default toggle >/dev/null
+  check "toggle off" bash -c '! bash "$1" default status -q' _ "$CLI"
+  check "desktop quoting" bash -c '
+    source "$1/lib/common.sh" 2>/dev/null; source "$1/lib/default.sh"
+    [[ $(desktop_quote "/a b/\"x\"/\$y") == "\"/a b/\\\"x\\\"/\\\$y\"" ]]' _ "$ROOT"
+else
+  echo "  (xdg-terminal-exec not installed, skipped)"
+fi
 
 printf '\ncli: %d passed, %d failed\n' "$PASS" "$FAIL"
 ((FAIL == 0))
