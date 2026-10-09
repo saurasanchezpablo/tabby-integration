@@ -7,7 +7,7 @@ exec </dev/null
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 CLI="$ROOT/bin/omarchy-tabby"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/omarchy-tabby-int.XXXXXX")"
-trap 'rm -rf -- "$SANDBOX"' EXIT
+trap 'rm -rf -- "${SANDBOX:?}"' EXIT
 MENU_MODEL="${OMARCHY_PATH:-/usr/share/omarchy}/shell/plugins/menu/MenuModel.js"
 
 PASS=0

@@ -7,7 +7,7 @@ exec </dev/null
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/omarchy-tabby-install.XXXXXX")"
-trap 'rm -rf -- "$SANDBOX"' EXIT
+trap 'rm -rf -- "${SANDBOX:?}"' EXIT
 
 PASS=0
 FAIL=0
@@ -40,6 +40,10 @@ cat >"$SANDBOX/fakebin/hyprctl" <<'EOF'
 case "$1" in version) echo fake ;; *) echo '[]' ;; esac
 EOF
 printf '#!/bin/bash\nexit 0\n' >"$SANDBOX/fakebin/tabby"
+# Never see (or notify about) a real Tabby running on the host.
+printf '#!/bin/bash\nexit 1\n' >"$SANDBOX/fakebin/pgrep"
+printf '#!/bin/bash\nexit 0\n' >"$SANDBOX/fakebin/omarchy-notification-send"
+printf '#!/bin/bash\nexit 0\n' >"$SANDBOX/fakebin/notify-send"
 chmod +x "$SANDBOX/fakebin"/*
 printf '[Desktop Entry]\nType=Application\nName=Foot\nExec=foot\nCategories=TerminalEmulator;\n' >"$SANDBOX/usr/share/applications/foot.desktop"
 
@@ -117,7 +121,7 @@ check "settings removed" test ! -e "$XDG_CONFIG_HOME/omarchy-tabby"
 check "widget disabled" grep -q "omarchy plugin disable $ID" "$LOG"
 
 echo "== fresh Tabby plugin dir"
-rm -rf "$TP"
+rm -rf "${TP:?}"
 bash "$ROOT/install.sh" --no-default --no-hypr --no-menu --no-widget >/dev/null 2>&1
 eq "package.json created" '{"dependencies":{"tabby-omarchy":"file:omarchy/tabby-omarchy"}}' "$(jq -c . "$TP/package.json")"
 bash "$ROOT/install.sh" --uninstall >/dev/null 2>&1

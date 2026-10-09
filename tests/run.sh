@@ -47,7 +47,7 @@ if [[ -x $QMLLINT && -d /usr/share/omarchy/shell ]]; then
   ln -s /usr/share/omarchy/shell "$qs/qs"
   # Dynamic host objects make missing-property/unqualified noise; anything else fails.
   run "qmllint" bash -c '! "$1" -I /usr/lib/qt6/qml -I "$2" Panel.qml 2>&1 | grep -E "^(Warning|Error)" | grep -vE "missing-property|unqualified"' _ "$QMLLINT" "$qs"
-  rm -rf "$qs"
+  rm -rf "${qs:?}"
 fi
 
 section "unit"

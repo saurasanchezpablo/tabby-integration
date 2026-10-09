@@ -98,7 +98,7 @@ install_plugin_files() {
   fi
   mkdir -p -- "$PLUGINS_DIR" || die "cannot create $PLUGINS_DIR"
   local stage="$PLUGINS_DIR/.$PLUGIN_ID.new.$$" item
-  rm -rf -- "$stage"
+  rm -rf -- "${stage:?}"
   mkdir -p -- "$stage" || die "cannot create $stage"
   for item in "${PAYLOAD[@]}"; do
     [[ -e $SRC/$item ]] && cp -R --no-preserve=ownership -- "$SRC/$item" "$stage/"
@@ -108,10 +108,10 @@ install_plugin_files() {
   find "$stage" -name '*.test.*' -delete
   printf '%s\n' "$OT_VERSION" >"$stage/$MARKER"
   if ! validate_plugin "$stage"; then
-    rm -rf -- "$stage"
+    rm -rf -- "${stage:?}"
     die "the plugin failed validation"
   fi
-  rm -rf -- "$DEST"
+  rm -rf -- "${DEST:?}"
   mv -- "$stage" "$DEST" || die "cannot move the plugin into place"
 }
 
@@ -135,9 +135,9 @@ install_wrapper() {
 install_companion() {
   mkdir -p -- "$TABBY_PLUGINS/omarchy" "$TABBY_PLUGINS/node_modules" || die "cannot create $TABBY_PLUGINS"
   local stage="$TABBY_PLUGINS/omarchy/.tabby-omarchy.new.$$"
-  rm -rf -- "$stage"
+  rm -rf -- "${stage:?}"
   cp -R --no-preserve=ownership -- "$SRC/tabby-omarchy" "$stage" || die "cannot copy the Tabby plugin"
-  rm -rf -- "$COMPANION_DIR"
+  rm -rf -- "${COMPANION_DIR:?}"
   mv -- "$stage" "$COMPANION_DIR" || die "cannot move the Tabby plugin into place"
 
   # node_modules/tabby-omarchy -> ../omarchy/tabby-omarchy, declared in
@@ -145,7 +145,7 @@ install_companion() {
   if [[ -L $COMPANION_LINK || ! -e $COMPANION_LINK ]]; then
     ln -sfn ../omarchy/tabby-omarchy "$COMPANION_LINK"
   elif [[ -f $COMPANION_LINK/package.json ]] && jq -e '.name == "tabby-omarchy"' "$COMPANION_LINK/package.json" >/dev/null 2>&1; then
-    rm -rf -- "$COMPANION_LINK"
+    rm -rf -- "${COMPANION_LINK:?}"
     ln -sfn ../omarchy/tabby-omarchy "$COMPANION_LINK"
   else
     die "$COMPANION_LINK exists and is not ours"
@@ -163,7 +163,7 @@ install_companion() {
 remove_companion() {
   local pkg="$TABBY_PLUGINS/package.json"
   [[ -L $COMPANION_LINK ]] && rm -f -- "$COMPANION_LINK"
-  rm -rf -- "$COMPANION_DIR"
+  rm -rf -- "${COMPANION_DIR:?}"
   rmdir -- "$TABBY_PLUGINS/omarchy" 2>/dev/null || true
   if [[ -f $pkg ]] && jq -e '.dependencies["tabby-omarchy"]' "$pkg" >/dev/null 2>&1; then
     local next
@@ -300,12 +300,12 @@ do_uninstall() {
   if is_git_install; then
     note "$DEST is a git checkout; remove it with: omarchy plugin remove $PLUGIN_ID"
   elif [[ -f $DEST/$MARKER ]]; then
-    rm -rf -- "$DEST"
+    rm -rf -- "${DEST:?}"
   fi
   shell_ipc rescanPlugins || true
-  rm -rf -- "$OT_RUNTIME"
+  rm -rf -- "${OT_RUNTIME:?}"
   if ((!keep_settings)); then
-    rm -rf -- "$OT_CONFIG_DIR"
+    rm -rf -- "${OT_CONFIG_DIR:?}"
   fi
   rm -f -- "$OT_STATE_DIR/install.json"
   ((RESTORED)) && rm -f -- "$OT_STATE_DIR/tabby-backup.json"

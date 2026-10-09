@@ -62,7 +62,7 @@ cleanup() {
   pids="$(tabby_pids)"
   # shellcheck disable=SC2086
   [[ -n $pids ]] && kill -9 $pids 2>/dev/null
-  rm -rf -- "$W"
+  rm -rf -- "${W:?}"
 }
 trap cleanup EXIT
 
@@ -136,8 +136,8 @@ check "re-enabled" wait_for 15 grep -q "name: Omarchy" "$UD/config.yaml"
 echo "== uninstall while running (same order as install.sh --uninstall)"
 ot settings set syncColors false >/dev/null
 check "restored before removal" wait_for 15 bash -c '! grep -q "name: Omarchy" "$1/config.yaml"' _ "$UD"
-rm -rf "$UD/plugins/omarchy/tabby-omarchy"
-rm -rf "$W/conf" # settings gone -> defaults would say syncColors=true
+rm -rf "${UD:?}/plugins/omarchy/tabby-omarchy"
+rm -rf "${W:?}/conf" # settings gone -> defaults would say syncColors=true
 sleep 12         # longer than the poll interval
 check "removed plugin stops instead of re-syncing" bash -c '! grep -q "name: Omarchy" "$1/config.yaml"' _ "$UD"
 
