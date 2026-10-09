@@ -12,6 +12,7 @@ desktop_quote() {
   s="${s//\"/\\\"}"
   s="${s//\`/\\\`}"
   s="${s//\$/\\\$}"
+  s="${s//%/%%}" # field codes
   printf '"%s"' "$s"
 }
 

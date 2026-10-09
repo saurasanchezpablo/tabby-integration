@@ -69,7 +69,7 @@ test('rejects FIFOs without hanging', { skip: !fs.existsSync('/usr/bin/mkfifo') 
 
 test('rejects oversized and malformed files', () => {
     const dir = tmpdir()
-    assert.equal(R.consume(put(dir, 'x'.repeat(70 * 1024)), { dir }).error, 'request too large')
+    assert.equal(R.consume(put(dir, 'x'.repeat(300 * 1024)), { dir }).error, 'request too large')
     assert.equal(R.consume(put(dir, '{nope'), { dir }).error, 'request is not JSON')
 })
 
@@ -94,7 +94,8 @@ test('validate enforces the schema per action', () => {
     assert.equal(ok({ action: 'run', argv: [] }), 'bad argv')
     assert.equal(ok({ action: 'run', argv: [''] }), 'empty command')
     assert.equal(ok({ action: 'run', argv: ['a', 5] }), 'bad argv item')
-    assert.equal(ok({ action: 'run', argv: new Array(300).fill('a') }), 'bad argv')
+    assert.equal(ok({ action: 'run', argv: new Array(300).fill('a') }), null)
+    assert.equal(ok({ action: 'run', argv: new Array(5000).fill('a') }), 'bad argv')
     assert.equal(ok({ action: 'profile' }), 'bad profile')
     assert.equal(ok({ action: 'open', profile: 'x' }), 'profile only allowed for profile')
     assert.equal(ok({ action: 'open', title: 'x'.repeat(300) }), 'bad title')

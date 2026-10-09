@@ -11,7 +11,7 @@ const path = require('path')
 
 const ID_RE = /^[a-f0-9]{32}$/
 const ACTIONS = ['open', 'run', 'profile', 'window']
-const MAX_BYTES = 64 * 1024
+const MAX_BYTES = 256 * 1024
 const MAX_AGE_MS = 60 * 1000
 const CLOCK_SKEW_MS = 5 * 1000
 
@@ -37,7 +37,7 @@ function validate (req, now) {
     if (req.title !== undefined && !isSafeString(req.title, 256)) return 'bad title'
     if (req.hold !== undefined && typeof req.hold !== 'boolean') return 'bad hold'
     if (req.action === 'run') {
-        if (!Array.isArray(req.argv) || req.argv.length < 1 || req.argv.length > 256) return 'bad argv'
+        if (!Array.isArray(req.argv) || req.argv.length < 1 || req.argv.length > 4096) return 'bad argv'
         if (!req.argv.every(a => isSafeString(a, 32768))) return 'bad argv item'
         if (!req.argv[0]) return 'empty command'
     } else if (req.argv !== undefined) {

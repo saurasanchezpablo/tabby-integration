@@ -7,7 +7,7 @@ exec </dev/null
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 CLI="$ROOT/bin/omarchy-tabby"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/omarchy-tabby-cli.XXXXXX")"
-trap 'rm -rf -- "$SANDBOX"' EXIT
+trap 'rm -rf -- "${SANDBOX:?}"' EXIT
 
 PASS=0
 FAIL=0
@@ -70,9 +70,18 @@ printf 'notify %s\n' "\$*" >>"$LOG"
 EOF
 chmod +x "$FAKE"/*
 export PATH="$FAKE:$PATH"
-# Hide uwsm-app so launches are direct and observable.
-uwsm_shadow="$FAKE/uwsm-app"
-printf '#!/bin/bash\nexit 127\n' >"$uwsm_shadow" && chmod +x "$uwsm_shadow"
+# Deterministic regardless of a real Tabby on the host: "running" is a flag
+# file, and uwsm-app just runs its command.
+cat >"$FAKE/pgrep" <<EOF
+#!/bin/bash
+[[ -f "$SANDBOX/tabby-running" ]]
+EOF
+cat >"$FAKE/uwsm-app" <<'EOF'
+#!/bin/bash
+[[ $1 == -- ]] && shift
+exec "$@"
+EOF
+chmod +x "$FAKE/pgrep" "$FAKE/uwsm-app"
 
 cat >"$SANDBOX/usr/share/applications/foot.desktop" <<'EOF'
 [Desktop Entry]
@@ -103,7 +112,7 @@ companion() {
   mkdir -p "$HOME/.config/tabby/plugins/node_modules/tabby-omarchy"
   echo '{}' >"$HOME/.config/tabby/plugins/node_modules/tabby-omarchy/package.json"
 }
-no_companion() { rm -rf "$HOME/.config/tabby/plugins"; }
+no_companion() { rm -rf "${HOME:?}/.config/tabby/plugins"; }
 # A live window state, as tabby-omarchy writes it (pid of this shell = alive).
 loaded() {
   mkdir -p "$OMARCHY_TABBY_RUNTIME_DIR/windows"
@@ -213,7 +222,7 @@ reset_settings
 
 echo "== fallback without companion"
 no_companion
-rm -rf "$OMARCHY_TABBY_RUNTIME_DIR/windows"
+rm -rf "${OMARCHY_TABBY_RUNTIME_DIR:?}/windows"
 focused_other
 reset_log
 ot open --dir /tmp
@@ -281,6 +290,46 @@ if command -v xdg-terminal-exec >/dev/null 2>&1; then
 else
   echo "  (xdg-terminal-exec not installed, skipped)"
 fi
+
+echo "== review regressions"
+reset_settings
+companion
+rm -rf "${OMARCHY_TABBY_RUNTIME_DIR:?}/windows"
+touch "$SANDBOX/tabby-running"
+focused_other
+reset_log
+ot open -- htop
+check "installed but not loaded: falls back to tabby://run" grep -q "^tabby tabby://run?command=htop" "$LOG"
+check "installed but not loaded: asks for a Tabby restart" grep -q "^notify .*Restart Tabby" "$LOG"
+rm -f "$SANDBOX/tabby-running"
+reset_log
+ot open -- htop
+check "not running: requests (Tabby loads the plugin at start)" grep -q "omarchyRequest=" "$LOG"
+loaded
+focused_tabby
+jq '.cwd = "/usr"' "$OMARCHY_TABBY_RUNTIME_DIR/windows/$$.json" >"$SANDBOX/st" && mv "$SANDBOX/st" "$OMARCHY_TABBY_RUNTIME_DIR/windows/$$.json"
+reset_log
+ot xdg --dir="$HOME"
+eq "published cwd of the focused window" /usr "$(jq -r .cwd <<<"$(last_request)")"
+jq '.cwd = "/nope"' "$OMARCHY_TABBY_RUNTIME_DIR/windows/$$.json" >"$SANDBOX/st" && mv "$SANDBOX/st" "$OMARCHY_TABBY_RUNTIME_DIR/windows/$$.json"
+reset_log
+ot xdg --dir="$HOME"
+eq "stale published cwd falls back to @active" "@active" "$(jq -r .cwd <<<"$(last_request)")"
+echo '{"v":1,"pid":' >"$OMARCHY_TABBY_RUNTIME_DIR/windows/1.json"
+check "a corrupt state file doesn't hide the others" bash -c 'bash "$1" status --json --fast | jq -e ".companion.loaded" >/dev/null' _ "$CLI"
+rm -f "$OMARCHY_TABBY_RUNTIME_DIR/windows/1.json"
+focused_other
+mkdir -p "$SANDBOX/cdp/proj" "$SANDBOX/work/proj"
+reset_log
+(cd "$SANDBOX/work" && CDPATH="$SANDBOX/cdp" bash "$CLI" open --dir proj)
+eq "CDPATH is ignored" "$SANDBOX/work/proj" "$(jq -r .cwd <<<"$(last_request)")"
+reset_log
+ot open --title "$(printf 'x%.0s' {1..400})" -- true
+eq "long titles are truncated" 256 "$(jq -r '.title | length' <<<"$(last_request)")"
+check "huge command lines are refused clearly" bash -c 'bash "$1" open -- printf "%s" "$(head -c 300000 /dev/zero | tr "\0" a)" 2>&1 | grep -q "too long"' _ "$CLI"
+check "desktop quoting escapes %" bash -c '
+  source "$1/lib/common.sh" 2>/dev/null; source "$1/lib/default.sh"
+  [[ $(desktop_quote "/a%b") == "\"/a%%b\"" ]]' _ "$ROOT"
 
 printf '\ncli: %d passed, %d failed\n' "$PASS" "$FAIL"
 ((FAIL == 0))

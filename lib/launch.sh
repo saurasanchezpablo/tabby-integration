@@ -59,8 +59,21 @@ open_request() {
   [[ $url_dir == /* && -d $url_dir ]] || url_dir="$HOME"
 
   tabby_installed || die "Tabby is not installed (sudo pacman -S tabby)"
+  # The plugin caps titles; a long one must not make the whole launch fail.
+  title="${title:0:256}"
 
+  # Installed but not loaded yet (Tabby running since before the install):
+  # Tabby would treat the request URL as a plain `open` and drop the command.
+  local use_requests=0
   if companion_installed; then
+    if ! tabby_running || companion_loaded; then
+      use_requests=1
+    else
+      notify "Restart Tabby to finish the Omarchy integration" $'\xef\x92\x89'
+    fi
+  fi
+
+  if ((use_requests)); then
     local json id
     json="$(jq -cn \
       --arg action "$action" --arg dir "$dir" --arg title "$title" --arg profile "$profile" \
@@ -73,6 +86,7 @@ open_request() {
        + (if $action == "profile" then {profile: $profile} else {} end)
        + (if $action == "run" then {argv: $ARGS.positional} else {} end)' \
       --args -- "$@")" || die "cannot encode request"
+    ((${#json} <= 262144)) || die "command line too long for Tabby (max 256 KiB)"
     id="$(write_request "$json")"
     send_to_tabby "tabby://open?directory=$(uri_encode "$url_dir")&omarchyRequest=$id"
   else
@@ -89,12 +103,21 @@ open_request() {
 
 # The directory a new terminal should start in.
 #   explicit dir -> that dir
-#   Tabby focused + smartCwd -> "@active" (the plugin resolves the active tab)
+#   Tabby focused + smartCwd -> the focused Tabby window's active tab, as
+#     published by tabby-omarchy; "@active" (resolved by whichever window
+#     receives the request) when no window has published one.
 smart_dir() {
-  local dir="$1"
-  if [[ "$(setting smartCwd)" == true && "$(active_window_class)" == tabby ]] && companion_loaded; then
-    if [[ -z $dir || $dir == "$HOME" || $dir == "$HOME/" ]]; then
-      printf '@active\n'
+  local dir="$1" states published
+  if [[ -z $dir || $dir == "$HOME" || $dir == "$HOME/" ]] &&
+    [[ "$(setting smartCwd)" == true && "$(active_window_class)" == tabby ]]; then
+    states="$(window_states_json)"
+    if jq -e 'length > 0' >/dev/null 2>&1 <<<"$states"; then
+      published="$(jq -r '[.[] | select(.focused == true and (.cwd | type) == "string")][0].cwd // empty' <<<"$states")"
+      if [[ $published == /* && -d $published ]]; then
+        printf '%s\n' "$published"
+      else
+        printf '@active\n'
+      fi
       return
     fi
   fi
@@ -138,7 +161,7 @@ cmd_open() {
   fi
   if [[ -n $dir ]]; then
     [[ -d $dir ]] || die "not a directory: $dir"
-    dir="$(cd -- "$dir" && pwd -P)"
+    dir="$(CDPATH='' cd -P -- "$dir" && pwd -P)"
   fi
   local fallback=""
   dir="$(smart_dir "$dir")"
@@ -253,7 +276,7 @@ cmd_xdg() {
   fi
 
   local fallback="" action=open
-  [[ -n $dir ]] && dir="$(cd -- "$dir" && pwd -P)"
+  [[ -n $dir ]] && dir="$(CDPATH='' cd -P -- "$dir" && pwd -P)"
   dir="$(smart_dir "$dir")"
   [[ $dir == @active ]] && fallback="$HOME"
   (($#)) && action=run

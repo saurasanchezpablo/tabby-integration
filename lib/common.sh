@@ -121,8 +121,10 @@ tabby_windows_json() {
     echo '[]'
     return
   }
-  hyprctl clients -j 2>/dev/null |
-    jq -c '[.[] | select(.class == "tabby")] | sort_by(.focusHistoryID)' 2>/dev/null || echo '[]'
+  local out
+  out="$(hyprctl clients -j 2>/dev/null |
+    jq -c '[.[]? | select(.class == "tabby")] | sort_by(.focusHistoryID)' 2>/dev/null)"
+  printf '%s\n' "${out:-[]}"
 }
 
 active_window_class() {
@@ -170,9 +172,13 @@ window_states_json() {
   done
   if ((${#out[@]} == 0)); then
     echo '[]'
-  else
-    jq -cs '[.[] | select(type == "object" and .v == 1)]' "${out[@]}" 2>/dev/null || echo '[]'
+    return
   fi
+  # One file at a time: a truncated or corrupt file must not hide the others.
+  for f in "${out[@]}"; do
+    jq -c 'select(type == "object" and .v == 1)' -- "$f" 2>/dev/null
+  done | jq -cs '.' 2>/dev/null || echo '[]'
+
 }
 
 companion_loaded() {
