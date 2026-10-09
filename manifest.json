@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Pablo Saura",
   "license": "MIT",
-  "repository": "https://github.com/saurasanchezpablo/omarchy-tabby",
+  "repository": "https://github.com/saurasanchezpablo/tabby-integration",
   "description": "Tabby as a first-class Omarchy terminal: live theme and font sync, default-terminal support with smart working directory, universal clipboard, dropdown, profiles in the bar, and secure launching.",
   "kinds": [
     "bar-widget"

@@ -17,32 +17,53 @@ Makes [Tabby](https://tabby.sh) a first-class Omarchy terminal instead of
 
 ## Install
 
+From the Omarchy plugin marketplace (or `omarchy plugin add
+https://github.com/saurasanchezpablo/tabby-integration`), enable the **Tabby**
+bar widget, open it and press **Set up the Tabby integration**.
+
+Or from a checkout:
+
 ```bash
-git clone https://github.com/saurasanchezpablo/omarchy-tabby.git
-cd omarchy-tabby
-bash install.sh         # works even where exec bits are lost (rclone, some mounts)
+git clone https://github.com/saurasanchezpablo/tabby-integration.git
+cd tabby-integration
+bash install.sh
 ```
 
+The installer lists what it will change and asks before doing it, including
+whether Tabby should become the default terminal (off unless you say yes).
 Then **restart Tabby** once so it loads its half of the integration.
 
-Options: `--no-default` (keep your current default terminal), `--no-hypr`,
-`--no-menu`, `--no-widget`, `--no-keys`, `--focus-key="SUPER + ALT + T"`,
-`--dropdown-key="SUPER + grave"`. The installer never uses sudo, never edits
-Tabby's `config.yaml` and never kills Tabby. Keys that are already bound are
-left alone.
+Options: `--yes` (no questions, for scripts), `--default` (make Tabby the
+default terminal), `--no-hypr`, `--no-menu`, `--no-widget`, `--no-keys`,
+`--focus-key="SUPER + ALT + T"`, `--dropdown-key="SUPER + grave"`. The
+installer runs entirely as your user, never edits Tabby's `config.yaml` and
+never kills Tabby. Keys that are already bound are left alone. Every file it
+edits gets a marked block and a backup.
 
-Uninstall with `bash install.sh --uninstall`: Tabby gets its own colour scheme,
-font and copy keys back (live, if it's running), and every file that was
-edited is restored. Backups stay in `~/.local/state/omarchy-tabby/backups`.
+What it installs: the `omarchy-tabby` command (`~/.local/share/omarchy-tabby`,
+linked from `~/.local/bin`), the bar widget, the `tabby-omarchy` Tabby plugin
+(`~/.config/tabby/plugins`), a Hyprland rule and keybindings
+(`~/.config/hypr/omarchy-tabby.lua`, loaded from `hyprland.lua`) and Omarchy
+menu entries. Dependencies: Tabby, `jq`; optionally `xdg-terminal-exec`,
+`python3` and `perl` (all present on Omarchy).
 
-`omarchy plugin add <repo>` also works for the bar widget; run `install.sh`
-from the checkout afterwards for the rest.
+## Uninstall
+
+```bash
+omarchy-tabby uninstall        # or: bash install.sh --uninstall
+```
+
+Tabby gets its own colour scheme, font and copy keys back (live, if it's
+running), and every edited file is restored. Backups stay in
+`~/.local/state/omarchy-tabby/backups`. `omarchy plugin remove` only removes
+the bar widget; the rest keeps working until you run the command above
+(`omarchy-tabby setup` brings the widget back).
 
 ## Use
 
 | | |
 |---|---|
-| SUPER+RETURN | Tabby, when it is the default terminal (`omarchy-tabby default on`) |
+| SUPER+RETURN | Tabby, when it is the default terminal (`omarchy-tabby default on`, or the panel toggle) |
 | SUPER+ALT+T | focus Tabby, starting it if needed |
 | SUPER+\` | Tabby dropdown |
 | Bar: left / middle / right click | panel / new tab / dropdown |
