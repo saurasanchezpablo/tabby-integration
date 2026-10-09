@@ -72,7 +72,7 @@ default_on() {
       grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' -e "^$OT_DESKTOP_ID\$" -- "$OT_XDG_LIST" || true
     fi
   } | write_atomic "$OT_XDG_LIST" 644 || die "cannot write $OT_XDG_LIST"
-  [[ ${1:-} == --quiet ]] || notify "Tabby is now the default terminal" $''
+  [[ ${1:-} == --quiet ]] || notify "Tabby is now the default terminal" $'\xef\x92\x89'
 }
 
 default_off() {
@@ -85,7 +85,7 @@ default_off() {
     grep -v -e "^$OT_DESKTOP_ID\$" -e "added by omarchy-tabby" -- "$OT_XDG_LIST" | write_atomic "$OT_XDG_LIST" 644
   fi
   rm -f -- "$OT_DESKTOP_FILE"
-  [[ ${1:-} == --quiet ]] || notify "Tabby is no longer the default terminal" $''
+  [[ ${1:-} == --quiet ]] || notify "Tabby is no longer the default terminal" $'\xef\x92\x89'
 }
 
 cmd_default() {

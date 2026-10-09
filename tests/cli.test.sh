@@ -2,6 +2,7 @@
 # Sandboxed tests for bin/omarchy-tabby: fake tabby/hyprctl/terminals on PATH,
 # every directory under a throwaway HOME. Never touches the real desktop.
 set -uo pipefail
+exec </dev/null
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 CLI="$ROOT/bin/omarchy-tabby"
