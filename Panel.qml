@@ -35,6 +35,8 @@ Panel {
   readonly property string pluginDir: decodeURIComponent(String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "").replace(/\/$/, ""))
   readonly property string cli: pluginDir + "/bin/omarchy-tabby"
   readonly property bool running: Model.running(status)
+  readonly property bool setupNeeded: Model.setupNeeded(status)
+  property bool settingUp: false
   readonly property bool problem: Model.problem(status)
   readonly property var profiles: Model.visibleProfiles(status)
   readonly property var toggles: Model.toggleSettings(schema)
@@ -61,6 +63,14 @@ Panel {
   function toggleSetting(key) { run(["settings", "toggle", String(key)]) }
   function setSetting(key, value) { run(["settings", "set", String(key), String(value)]) }
   function toggleDefault() { run(["default", "toggle"]) }
+  // The bundled installer: the command, the Tabby plugin, Hyprland rules and
+  // menu entries. Clicking the button is the consent; the default terminal
+  // is left alone (it stays a separate toggle).
+  function setUp() {
+    settingUp = true
+    Quickshell.execDetached(["bash", root.pluginDir + "/install.sh", "--yes", "--no-widget"])
+    setupDone.restart()
+  }
 
   onOpenedChanged: if (opened) refresh()
 
@@ -106,6 +116,12 @@ Panel {
     repeat: true
     triggeredOnStart: true
     onTriggered: root.refresh()
+  }
+
+  Timer {
+    id: setupDone
+    interval: 4000
+    onTriggered: if (root.alive) { root.settingUp = false; root.refresh() }
   }
 
   Timer {
@@ -219,6 +235,36 @@ Panel {
               elide: Text.ElideRight
               width: parent.width
             }
+          }
+        }
+
+        // ---------- Setup (marketplace installs get only this widget) ----------
+        Column {
+          width: parent.width
+          spacing: Style.space(8)
+          visible: root.setupNeeded
+
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            text: "Installs the omarchy-tabby command and Tabby's companion plugin (Omarchy theme, font and clipboard in Tabby; your current ones are backed up), adds a Hyprland rule with free keybindings and Setup > Tabby to the menu. Undo with: omarchy-tabby uninstall"
+            color: root.fg
+            opacity: 0.7
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          Button {
+            width: parent.width
+            iconText: Model.ICONS.check
+            text: root.settingUp ? "Setting up…" : "Set up the Tabby integration"
+            enabled: !root.settingUp
+            fontSize: Style.font.bodySmall
+            foreground: root.fg
+            fontFamily: root.fontFamily
+            bordered: true
+            onClicked: root.setUp()
           }
         }
 

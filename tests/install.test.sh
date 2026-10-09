@@ -60,8 +60,12 @@ ID=io.github.saurasanchezpablo.tabby
 DEST="$XDG_CONFIG_HOME/omarchy/plugins/$ID"
 TP="$XDG_CONFIG_HOME/tabby/plugins"
 
+echo "== consent"
+check "refuses to change anything without a terminal or --yes" bash -c '! bash "$1/install.sh" >/dev/null 2>&1' _ "$ROOT"
+check "nothing installed after refusal" test ! -e "$XDG_DATA_HOME/omarchy-tabby"
+
 echo "== install"
-bash "$ROOT/install.sh" >"$SANDBOX/out" 2>&1
+bash "$ROOT/install.sh" --yes --default >"$SANDBOX/out" 2>&1
 check "install exits 0" test $? -eq 0
 check "plugin installed" test -f "$DEST/manifest.json"
 check "install marker" test -f "$DEST/.omarchy-tabby-install"
@@ -83,25 +87,35 @@ if command -v xdg-terminal-exec >/dev/null 2>&1; then
   eq "default terminal" tabby-omarchy.desktop "$("$real_xte" --print-id | cut -d: -f1)"
 fi
 check "widget enabled" grep -q "omarchy plugin enable $ID right" "$LOG"
+check "CLI has its own home" test -f "$XDG_DATA_HOME/omarchy-tabby/bin/omarchy-tabby"
+check "wrapper points at the home" grep -q "$XDG_DATA_HOME/omarchy-tabby/bin/omarchy-tabby" "$HOME/.local/bin/omarchy-tabby"
+check "installer ships with the CLI" test -f "$XDG_DATA_HOME/omarchy-tabby/install.sh"
 check "install record" jq -e '.version and .default' "$XDG_STATE_HOME/omarchy-tabby/install.json" >/dev/null
 
 echo "== update"
 : >"$LOG"
-bash "$ROOT/install.sh" >"$SANDBOX/out2" 2>&1
+bash "$ROOT/install.sh" --yes --default >"$SANDBOX/out2" 2>&1
 check "update exits 0" test $? -eq 0
 eq "one hypr block" 1 "$(grep -c ">>> $ID" "$XDG_CONFIG_HOME/hypr/hyprland.lua")"
 eq "one menu block" 1 "$(grep -c ">>> $ID" "$XDG_CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc")"
 eq "one list entry" 1 "$(grep -cx tabby-omarchy.desktop "$XDG_CONFIG_HOME/xdg-terminals.list")"
 check "shell restarted on update" grep -q "omarchy restart shell" "$LOG"
 
+echo "== survives omarchy plugin remove"
+mv "$DEST" "$XDG_CONFIG_HOME/omarchy/plugins/.$ID.bak.test"
+check "CLI still works" bash -c '[[ -n $("$1" version) ]]' _ "$HOME/.local/bin/omarchy-tabby"
+check "status reports the missing widget" bash -c '"$1" status --json --fast | jq -e ".setup.widget == false and .setup.complete" >/dev/null' _ "$HOME/.local/bin/omarchy-tabby"
+check "doctor says how to fix it" bash -c '"$1" doctor 2>/dev/null | grep -q "omarchy-tabby setup"' _ "$HOME/.local/bin/omarchy-tabby"
+mv "$XDG_CONFIG_HOME/omarchy/plugins/.$ID.bak.test" "$DEST"
+
 echo "== refusals"
 mv "$HOME/.local/bin/omarchy-tabby" "$SANDBOX/wrapper"
 printf '#!/bin/bash\necho mine\n' >"$HOME/.local/bin/omarchy-tabby"
-check "won't overwrite a foreign command" bash -c '! bash "$1/install.sh" >/dev/null 2>&1' _ "$ROOT"
+check "won't overwrite a foreign command" bash -c '! bash "$1/install.sh" --yes >/dev/null 2>&1' _ "$ROOT"
 eq "foreign command untouched" mine "$(bash "$HOME/.local/bin/omarchy-tabby")"
 mv "$SANDBOX/wrapper" "$HOME/.local/bin/omarchy-tabby"
 rm -f "$DEST/.omarchy-tabby-install"
-check "won't overwrite a foreign plugin dir" bash -c '! bash "$1/install.sh" >/dev/null 2>&1' _ "$ROOT"
+check "won't overwrite a foreign plugin dir" bash -c '! bash "$1/install.sh" --yes >/dev/null 2>&1' _ "$ROOT"
 echo 0.0.0 >"$DEST/.omarchy-tabby-install"
 
 echo "== uninstall"
@@ -118,17 +132,18 @@ check "terminal list restored" cmp -s "$XDG_CONFIG_HOME/xdg-terminals.list" "$SA
 eq "package.json back to the other plugin only" '{"dependencies":{"tabby-other":"1.0.0"}}' "$(jq -c . "$TP/package.json")"
 check "desktop entry removed" test ! -e "$XDG_DATA_HOME/applications/tabby-omarchy.desktop"
 check "settings removed" test ! -e "$XDG_CONFIG_HOME/omarchy-tabby"
+check "CLI home removed" test ! -e "$XDG_DATA_HOME/omarchy-tabby"
 check "widget disabled" grep -q "omarchy plugin disable $ID" "$LOG"
 
 echo "== fresh Tabby plugin dir"
 rm -rf "${TP:?}"
-bash "$ROOT/install.sh" --no-default --no-hypr --no-menu --no-widget >/dev/null 2>&1
+bash "$ROOT/install.sh" --yes --no-hypr --no-menu --no-widget >/dev/null 2>&1
 eq "package.json created" '{"dependencies":{"tabby-omarchy":"file:omarchy/tabby-omarchy"}}' "$(jq -c . "$TP/package.json")"
 bash "$ROOT/install.sh" --uninstall >/dev/null 2>&1
 check "package.json we created is removed" test ! -e "$TP/package.json"
 
 echo "== uninstall --keep-settings"
-bash "$ROOT/install.sh" --no-default --no-hypr --no-menu --no-widget >/dev/null 2>&1
+bash "$ROOT/install.sh" --yes --no-hypr --no-menu --no-widget >/dev/null 2>&1
 bash "$HOME/.local/bin/omarchy-tabby" settings set syncFont false
 bash "$HOME/.local/bin/omarchy-tabby" settings set tuiTerminal kitty
 bash "$ROOT/install.sh" --uninstall --keep-settings >/dev/null 2>&1

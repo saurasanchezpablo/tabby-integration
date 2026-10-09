@@ -58,7 +58,7 @@ open_request() {
   local url_dir="${fallback:-$dir}"
   [[ $url_dir == /* && -d $url_dir ]] || url_dir="$HOME"
 
-  tabby_installed || die "Tabby is not installed (sudo pacman -S tabby)"
+  tabby_installed || die "Tabby is not installed (pacman -S tabby)"
   # The plugin caps titles; a long one must not make the whole launch fail.
   title="${title:0:256}"
 

@@ -51,6 +51,10 @@ Integration
   status [--json]       what is installed, running and synced
   profiles [--json]     Tabby profiles (from the running Tabby)
   doctor                check the installation
+  setup [--yes] [--default] ...
+                        install or repair the whole integration
+  uninstall [--keep-settings]
+                        remove it and restore what was changed
 
   version | help
 EOF

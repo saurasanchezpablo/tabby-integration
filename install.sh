@@ -1,13 +1,14 @@
 #!/bin/bash
 # Install / update / uninstall the Tabby integration for Omarchy.
 #
-#   ./install.sh                 install or update everything
-#   ./install.sh --uninstall     remove everything and restore what we changed
+#   bash install.sh                install or update (asks before changing anything)
+#   bash install.sh --uninstall    remove everything and restore what we changed
 #
-# Options: --no-default --no-hypr --no-menu --no-widget --no-keys
+# Options: --yes (no questions) --default (make Tabby the default terminal)
+#          --no-hypr --no-menu --no-widget --no-keys
 #          --focus-key=COMBO --dropdown-key=COMBO --keep-settings --dev
 #
-# Never uses sudo, never edits Tabby's config.yaml, never kills Tabby.
+# Runs entirely as your user. Never edits Tabby's config.yaml, never kills Tabby.
 set -uo pipefail
 unset ELECTRON_RUN_AS_NODE
 
@@ -23,9 +24,14 @@ TABBY_PLUGINS="$OT_TABBY_CONFIG_DIR/plugins"
 COMPANION_DIR="$TABBY_PLUGINS/omarchy/tabby-omarchy"
 COMPANION_LINK="$TABBY_PLUGINS/node_modules/tabby-omarchy"
 WRAPPER_TAG="# omarchy-tabby wrapper ($PLUGIN_ID)"
-PAYLOAD=(manifest.json Panel.qml Model.js bin lib tabby-omarchy LICENSE README.md CHANGELOG.md)
+# The CLI lives in its own home so `omarchy plugin remove` (which only knows
+# about the bar widget) can't strand the keybindings, menu and Tabby plugin.
+OT_HOME="${OMARCHY_TABBY_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-tabby}"
+PAYLOAD=(manifest.json Panel.qml Model.js bin lib tabby-omarchy install.sh LICENSE README.md CHANGELOG.md)
 
-do_default=1 do_hypr=1 do_menu=1 do_widget=1 keep_settings=0 dev=0 uninstall=0
+WIDGET_UPDATED=0
+# do_default: 1 yes, 0 no, -1 ask (opt-in: "no" without a terminal)
+do_default=-1 do_hypr=1 do_menu=1 do_widget=1 keep_settings=0 dev=0 uninstall=0 assume_yes=0
 key_args=()
 
 step() { printf '\e[1;34m::\e[0m %s\n' "$*"; }
@@ -36,6 +42,7 @@ usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; }
 while (($#)); do
   case "$1" in
   --uninstall) uninstall=1 ;;
+  --default) do_default=1 ;;
   --no-default) do_default=0 ;;
   --no-hypr) do_hypr=0 ;;
   --no-menu) do_menu=0 ;;
@@ -43,7 +50,7 @@ while (($#)); do
   --no-keys | --focus-key=* | --dropdown-key=*) key_args+=("$1") ;;
   --keep-settings) keep_settings=1 ;;
   --dev) dev=1 ;;
-  --yes | -y) ;; # accepted for scripts; the installer never prompts
+  --yes | -y) assume_yes=1 ;;
   -h | --help) usage; exit 0 ;;
   *) die "unknown option $1 (see --help)" ;;
   esac
@@ -51,17 +58,60 @@ while (($#)); do
 done
 
 ((EUID != 0)) || die "run as your user, not root"
-command -v jq >/dev/null 2>&1 || die "jq is required (sudo pacman -S jq)"
+command -v jq >/dev/null 2>&1 || die "jq is required (pacman -S jq)"
+
+interactive() { ((!assume_yes)) && [[ -t 0 && -t 1 ]]; }
+
+# ask QUESTION DEFAULT(y|n) -> 0 for yes
+ask() {
+  local answer
+  printf '\e[1m%s\e[0m ' "$1"
+  read -r answer || answer=""
+  answer="${answer:-$2}"
+  [[ ${answer,,} == y || ${answer,,} == yes ]]
+}
 
 is_git_install() { [[ -d $DEST/.git ]]; }
 
 # The installed CLI (falls back to the source tree before the first copy).
 ot() {
-  if [[ -f $DEST/bin/omarchy-tabby ]]; then
-    bash "$DEST/bin/omarchy-tabby" "$@"
-  else
-    bash "$SRC/bin/omarchy-tabby" "$@"
+  local dir
+  for dir in "$OT_HOME" "$DEST" "$SRC"; do
+    if [[ -f $dir/bin/omarchy-tabby ]]; then
+      bash "$dir/bin/omarchy-tabby" "$@"
+      return
+    fi
+  done
+  return 127
+}
+
+# Copy the payload into a fresh directory next to DEST and swap it in.
+copy_payload() { # dest
+  local dest="$1" stage item
+  stage="$(dirname "$dest")/.$(basename "$dest").new.$$"
+  rm -rf -- "${stage:?}"
+  mkdir -p -- "$stage" || return 1
+  for item in "${PAYLOAD[@]}"; do
+    [[ -e $SRC/$item ]] && cp -R --no-preserve=ownership -- "$SRC/$item" "$stage/"
+  done
+  # The source may live on a filesystem without exec bits (e.g. rclone).
+  chmod 755 "$stage/bin/omarchy-tabby"
+  find "$stage" -name '*.test.*' -delete
+  printf '%s\n' "$OT_VERSION" >"$stage/$MARKER"
+  printf '%s\n' "$stage"
+}
+
+install_home() {
+  if [[ $(readlink -f -- "$SRC") == "$(readlink -f -- "$OT_HOME" 2>/dev/null)" ]]; then
+    return 0
   fi
+  mkdir -p -- "$(dirname "$OT_HOME")" || die "cannot create $(dirname "$OT_HOME")"
+  if [[ -e $OT_HOME && ! -f $OT_HOME/$MARKER ]]; then
+    die "$OT_HOME exists and was not installed by this script; remove it first"
+  fi
+  local stage
+  stage="$(copy_payload "$OT_HOME")" || die "cannot copy to $OT_HOME"
+  swap_dir "$stage" "$OT_HOME" || die "cannot move $OT_HOME into place"
 }
 
 shell_ipc() {
@@ -97,21 +147,14 @@ install_plugin_files() {
     die "$DEST exists and was not installed by this script; remove it first"
   fi
   mkdir -p -- "$PLUGINS_DIR" || die "cannot create $PLUGINS_DIR"
-  local stage="$PLUGINS_DIR/.$PLUGIN_ID.new.$$" item
-  rm -rf -- "${stage:?}"
-  mkdir -p -- "$stage" || die "cannot create $stage"
-  for item in "${PAYLOAD[@]}"; do
-    [[ -e $SRC/$item ]] && cp -R --no-preserve=ownership -- "$SRC/$item" "$stage/"
-  done
-  # The source may live on a filesystem without exec bits (e.g. rclone).
-  chmod 755 "$stage/bin/omarchy-tabby"
-  find "$stage" -name '*.test.*' -delete
-  printf '%s\n' "$OT_VERSION" >"$stage/$MARKER"
+  local stage
+  stage="$(copy_payload "$DEST")" || die "cannot copy the plugin"
   if ! validate_plugin "$stage"; then
     rm -rf -- "${stage:?}"
     die "the plugin failed validation"
   fi
   swap_dir "$stage" "$DEST" || die "cannot move the plugin into place"
+  WIDGET_UPDATED=1
 }
 
 # Replace directory DEST with STAGE leaving DEST missing only between two
@@ -136,7 +179,7 @@ install_wrapper() {
   if [[ -e $OT_BIN_LINK ]] && ! grep -qF "$WRAPPER_TAG" "$OT_BIN_LINK" 2>/dev/null; then
     die "$OT_BIN_LINK exists and is not ours; remove it first"
   fi
-  printf '#!/bin/bash\n%s\nexec bash %q "$@"\n' "$WRAPPER_TAG" "$DEST/bin/omarchy-tabby" | write_atomic "$OT_BIN_LINK" 755 ||
+  printf '#!/bin/bash\n%s\nexec bash %q "$@"\n' "$WRAPPER_TAG" "$OT_HOME/bin/omarchy-tabby" | write_atomic "$OT_BIN_LINK" 755 ||
     die "cannot write $OT_BIN_LINK"
   case ":$PATH:" in
   *":$dir:"*) ;;
@@ -235,12 +278,32 @@ enable_widget() {
 
 do_install() {
   local updating=0
-  [[ -d $DEST ]] && updating=1
-  tabby_installed || note "warning: Tabby is not installed yet (sudo pacman -S tabby); installing the integration anyway"
+  [[ -d $OT_HOME || -d $DEST ]] && updating=1
+  tabby_installed || note "warning: Tabby is not installed yet (pacman -S tabby); installing the integration anyway"
 
-  step "Omarchy plugin → $DEST"
-  install_plugin_files
-  step "Command → $OT_BIN_LINK"
+  if interactive; then
+    echo "This will:"
+    if ((do_widget)); then echo "  • install the omarchy-tabby command and the Tabby bar widget"; else echo "  • install the omarchy-tabby command"; fi
+    echo "  • add the tabby-omarchy plugin to Tabby: after a Tabby restart it uses your"
+    echo "    Omarchy theme, font and clipboard keys (your current ones are backed up"
+    echo "    and restored by --uninstall; each sync can be turned off)"
+    ((do_hypr)) && echo "  • add a Tabby rule and free keybindings to Hyprland (marked block, backed up)"
+    ((do_menu)) && echo "  • add Setup > Tabby to the Omarchy menu (marked block, backed up)"
+    ask "Continue? [Y/n]" y || die "nothing changed"
+    if ((do_default == -1)); then
+      if ask "Make Tabby the default terminal (SUPER+RETURN)? [y/N]" n; then do_default=1; else do_default=0; fi
+    fi
+  elif ((!assume_yes)); then
+    die "run this in a terminal to confirm the changes, or pass --yes"
+  fi
+  ((do_default == -1)) && do_default=0
+
+  step "Command → $OT_HOME"
+  install_home
+  if ((do_widget)); then
+    step "Omarchy bar widget → $DEST"
+    install_plugin_files
+  fi
   install_wrapper
   step "Tabby plugin → $COMPANION_DIR"
   install_companion
@@ -270,7 +333,7 @@ do_install() {
   if ((do_widget)); then
     step "Bar widget"
     enable_widget
-    if ((updating || dev)) && command -v omarchy >/dev/null 2>&1; then
+    if ((WIDGET_UPDATED && (updating || dev))) && command -v omarchy >/dev/null 2>&1; then
       # Hot reload can keep serving the old compiled QML.
       omarchy restart shell >/dev/null 2>&1 || true
     fi
@@ -320,6 +383,10 @@ do_uninstall() {
     note "$DEST is a git checkout; remove it with: omarchy plugin remove $PLUGIN_ID"
   elif [[ -f $DEST/$MARKER ]]; then
     rm -rf -- "${DEST:?}"
+  fi
+  if [[ -f $OT_HOME/$MARKER ]]; then
+    # Bash keeps reading this script from its open file even if it lives here.
+    rm -rf -- "${OT_HOME:?}"
   fi
   shell_ipc rescanPlugins || true
   rm -rf -- "${OT_RUNTIME:?}"

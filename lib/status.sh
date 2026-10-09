@@ -12,7 +12,12 @@ status_json() {
   tabby_running && running=true
   fn default_is_tabby && default=true
   companion_installed && companion=true
+  local cli=false hypr=false widget=false
+  [[ -x $OT_BIN_LINK ]] && cli=true
+  fn has_block "${OT_HYPR_MAIN:-}" -- && hypr=true
+  [[ -f ${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/$PLUGIN_ID/manifest.json ]] && widget=true
   jq -cn \
+    --argjson cli "$cli" --argjson hypr "$hypr" --argjson widget "$widget" \
     --argjson installed "$installed" --arg version "$tabby_version" --argjson running "$running" \
     --argjson windows "$windows" --argjson states "$states" --argjson default "$default" \
     --argjson companion "$companion" --argjson settings "$(settings_json)" \
@@ -33,6 +38,8 @@ status_json() {
       theme: ($main.status.theme // null),
       clipboard: ($main.status.clipboard // null),
       default: $default,
+      setup: { cli: $cli, hyprland: $hypr, companion: $companion, widget: $widget,
+               complete: ($cli and $companion) },
       settings: $settings,
       profiles: ($main.profiles // [])
     }'
@@ -93,6 +100,7 @@ cmd_doctor() {
     else
       printf '  \e[31m✗\e[0m %s\n' "$label"
       ok=1
+      return 1
     fi
   }
   echo "omarchy-tabby $OT_VERSION ($OT_ROOT)"
@@ -101,7 +109,9 @@ cmd_doctor() {
   check "Hyprland reachable" have_hyprctl
   check "xdg-terminal-exec installed" command -v xdg-terminal-exec
   check "omarchy-tabby on PATH ($OT_BIN_LINK)" test -x "$OT_BIN_LINK"
-  check "Omarchy shell plugin installed" test -f "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/$PLUGIN_ID/manifest.json"
+  if ! check "Omarchy bar widget installed" test -f "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/$PLUGIN_ID/manifest.json"; then
+    printf '    (removed with omarchy plugin remove? put it back with: omarchy-tabby setup)\n'
+  fi
   check "companion Tabby plugin installed" companion_installed
   check "companion survives Tabby's plugin manager" jq -e '.dependencies["tabby-omarchy"]' "$OT_TABBY_CONFIG_DIR/plugins/package.json"
   if tabby_running; then

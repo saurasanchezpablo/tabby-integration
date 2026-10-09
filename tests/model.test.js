@@ -90,3 +90,12 @@ test('profile icons by type', () => {
     assert.equal(M.profileIcon('local'), M.ICONS.shell)
     assert.equal(M.profileIcon('weird'), M.ICONS.terminal)
 })
+
+test('setup needed: marketplace install with only the widget', () => {
+    const fresh = { tabby: { installed: true, running: false }, setup: { complete: false } }
+    assert.equal(M.setupNeeded(fresh), true)
+    assert.equal(M.problem(fresh), true)
+    assert.equal(M.statusLine(fresh), 'Integration not set up')
+    assert.equal(M.setupNeeded(running), false)
+    assert.equal(M.setupNeeded({ setup: { complete: true } }), false)
+})

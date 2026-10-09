@@ -41,8 +41,14 @@ function companion(status) { return asObject(asObject(status).companion) }
 
 function running(status) { return tabby(status).running === true }
 
+// Installed from the marketplace (widget only), or the CLI/Tabby plugin are gone.
+function setupNeeded(status) {
+  var setup = asObject(asObject(status).setup)
+  return setup.complete === false
+}
+
 function problem(status) {
-  return companion(status).needsRestart === true || tabby(status).installed === false
+  return setupNeeded(status) || companion(status).needsRestart === true || tabby(status).installed === false
 }
 
 function tabCount(status) {
@@ -61,6 +67,7 @@ function statusLine(status) {
   var t = tabby(status)
   var c = companion(status)
   if (t.installed === false) return "Tabby is not installed"
+  if (setupNeeded(status)) return "Integration not set up"
   if (c.needsRestart) return "Restart Tabby to load the integration"
   if (!t.running) return "Not running"
   var n = tabCount(status)
@@ -130,6 +137,7 @@ if (typeof module !== "undefined") {
     MAX_PROFILES: MAX_PROFILES,
     parseStatus: parseStatus,
     running: running,
+    setupNeeded: setupNeeded,
     problem: problem,
     tabCount: tabCount,
     barText: barText,
