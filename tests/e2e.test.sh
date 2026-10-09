@@ -46,9 +46,22 @@ printf '#!/bin/bash\nexec tabby --user-data-dir=%q "$@"\n' "$UD" >"$W/tabby"
 chmod +x "$W/tabby"
 export OMARCHY_TABBY_TABBY_CMD="$W/tabby"
 
+tabby_pids() {
+  # [-] keeps the pattern from matching this script's own command line.
+  pgrep -u "$UID" -f -- "[-]-user-data-dir=$UD" 2>/dev/null
+}
 cleanup() {
-  pkill -u "$UID" -f -- "--user-data-dir=$UD" 2>/dev/null
-  sleep 0.5
+  local pids
+  pids="$(tabby_pids)"
+  # shellcheck disable=SC2086
+  [[ -n $pids ]] && kill $pids 2>/dev/null
+  for _ in $(seq 1 20); do
+    [[ -z $(tabby_pids) ]] && break
+    sleep 0.25
+  done
+  pids="$(tabby_pids)"
+  # shellcheck disable=SC2086
+  [[ -n $pids ]] && kill -9 $pids 2>/dev/null
   rm -rf -- "$W"
 }
 trap cleanup EXIT
